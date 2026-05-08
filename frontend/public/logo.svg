@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- House body -->
+  <path d="M8 32L32 10L56 32V56H8V32Z" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Roof peak -->
+  <path d="M2 34L32 8L62 34" stroke="#3b82f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Door -->
+  <rect x="24" y="40" width="16" height="16" rx="2" fill="#3b82f6" opacity="0.8"/>
+  <!-- Door knob -->
+  <circle cx="37" cy="48" r="1.5" fill="#93c5fd"/>
+  <!-- WiFi waves (centered above house, replacing chimney) -->
+  <!-- Bottom wave (smallest) -->
+  <path d="M26 22 Q32 18 38 22" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <!-- Middle wave -->
+  <path d="M22 18 Q32 12 42 18" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <!-- Top wave (largest) -->
+  <path d="M18 14 Q32 6 46 14" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- WiFi dot -->
+  <circle cx="32" cy="26" r="2.5" fill="#3b82f6"/>
+  <!-- Window left -->
+  <rect x="12" y="36" width="8" height="8" rx="1" fill="#1e40af" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+  <!-- Window right -->
+  <rect x="44" y="36" width="8" height="8" rx="1" fill="#1e40af" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+</svg>

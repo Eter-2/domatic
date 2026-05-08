@@ -1,0 +1,45 @@
+# =============================================================================
+# Mosquitto ACL file — Dom'Atic
+# Controls topic-level read/write permissions per user.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# domatic (backend service user) — full access to all topics
+# ---------------------------------------------------------------------------
+user domatic
+topic readwrite #
+
+# ---------------------------------------------------------------------------
+# Device users — pattern: device/<device_id>
+# Each IoT device authenticates with its own username (device ID or MAC).
+# Devices may only publish to their own state topics and subscribe to
+# their own command topics.
+#
+# Pattern variables:
+#   %u = authenticated username (device ID)
+#   %c = client ID
+# ---------------------------------------------------------------------------
+
+# Tasmota devices publish state, subscribe to commands
+pattern write tasmota/%u/#
+pattern read  cmnd/%u/#
+
+# ESPHome devices publish sensor data, subscribe to commands
+pattern write esphome/%u/#
+pattern read  esphome/%u/command/#
+
+# OpenBK devices
+pattern write openbk/%u/#
+pattern read  openbk/%u/command/#
+
+# Zigbee2MQTT bridge (single bridge user manages all zigbee devices)
+user zigbee2mqtt
+topic readwrite zigbee2mqtt/#
+
+# Matter bridge
+user matter-bridge
+topic readwrite matter/#
+
+# ---------------------------------------------------------------------------
+# Anonymous access — disabled (allow_anonymous false in mosquitto.conf)
+# ---------------------------------------------------------------------------

@@ -1,0 +1,57 @@
+{
+  "$schema": "SoftwareFactory Manifest v1.0",
+  "project_id": "domAtic-20260508-110211",
+  "name": "Dom'Atic",
+  "brief": "App central de domótica capaz de ler e reprogramar todos os dispositivos IoT para criar um ecossistema seguro e eficiente, independentemente de usar dispositivos baratos com firmware duvidoso de marcas desconhecidas.",
+  "objective": "Hub web local para gestão centralizada de dispositivos IoT heterogéneos, com monitorização de segurança, gestão de firmware open-source, e automações locais sem dependência cloud.",
+  "type": "Real-time Dashboard + API",
+  "target_users": [
+    "Proprietário de casa técnico com dispositivos IoT mistos",
+    "Entusiasta de domótica que quer controlo total",
+    "Utilizador que substituiu firmware Tuya por Tasmota/ESPHome"
+  ],
+  "key_features": [
+    "Device Inventory — registo de todos os dispositivos com protocolo, chip, firmware, segurança",
+    "Real-time Dashboard — estado ao vivo de dispositivos por divisão via WebSockets + MQTT",
+    "Firmware Manager — identificar dispositivos a flashar, track de versões Tasmota/ESPHome",
+    "Security Monitor — dispositivos a tentar contactar cloud, anomalias de rede, IPs bloqueados",
+    "Automation Rules — regras trigger-action para automações locais",
+    "MQTT Console — explorador de mensagens MQTT em tempo real",
+    "Network Map — mapa visual de dispositivos por VLAN/segmento"
+  ],
+  "tech_stack": {
+    "id": "hybrid-A-F",
+    "frontend": "Next.js 14 + TypeScript + TailwindCSS + shadcn/ui",
+    "backend": "FastAPI (Python) + WebSockets + aiomqtt",
+    "database": "PostgreSQL + SQLAlchemy 2.0 + Alembic",
+    "auth": "JWT local (python-jose)",
+    "realtime": "WebSockets nativo FastAPI + MQTT bridge",
+    "deploy": "Docker Compose (local + VPS ready)",
+    "extras": ["Redis (pub/sub para WS)", "Pi-hole API integration", "Home Assistant API optional"]
+  },
+  "repo_path": "/home/eter/projects/domAtic",
+  "deploy_url": "",
+  "phases": {
+    "intake": "completed",
+    "architecture": "pending",
+    "implementation": "pending",
+    "qa": "pending",
+    "security": "pending",
+    "deploy": "pending",
+    "handoff": "pending"
+  },
+  "phase_durations": {
+    "intake": "3m"
+  },
+  "decisions": [
+    "FastAPI sobre Next.js API routes: precisa de MQTT client assíncrono persistente e WebSockets robustos",
+    "JWT local: sem dependência de Auth0/Supabase — sistema 100% local",
+    "Redis para pub/sub: desacopla MQTT bridge do servidor WebSocket",
+    "PostgreSQL sobre SQLite: suporta JSON fields para device metadata e tem melhor concorrência"
+  ],
+  "errors": [],
+  "test_coverage": null,
+  "security_issues_fixed": 0,
+  "created_at": "2026-05-08T11:02:11Z",
+  "completed_at": ""
+}

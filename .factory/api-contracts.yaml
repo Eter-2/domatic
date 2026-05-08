@@ -1,0 +1,1299 @@
+openapi: 3.0.3
+
+info:
+  title: Dom'Atic API
+  description: |
+    Local IoT Hub — centralized device management, real-time monitoring,
+    automation rules, and security alerting. All endpoints (except auth)
+    require a valid Bearer JWT token obtained via POST /auth/login.
+  version: 1.0.0
+  contact:
+    name: Dom'Atic
+    email: admin@domatic.local
+
+servers:
+  - url: http://domatic.local:8000
+    description: Local LAN server
+  - url: http://localhost:8000
+    description: Development
+
+# ---------------------------------------------------------------------------
+# Security Schemes
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Short-lived access JWT (15 min). Obtain via POST /auth/login.
+        Refresh via POST /auth/refresh using the HttpOnly cookie.
+
+  # -------------------------------------------------------------------------
+  # Reusable Schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # --- Pagination ---
+    PaginatedMeta:
+      type: object
+      properties:
+        total:    { type: integer, example: 142 }
+        page:     { type: integer, example: 1 }
+        per_page: { type: integer, example: 50 }
+        pages:    { type: integer, example: 3 }
+
+    # --- Error ---
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                properties:
+                  loc:  { type: array, items: { type: string } }
+                  msg:  { type: string }
+                  type: { type: string }
+
+    # --- Enums (shared) ---
+    ProtocolType:
+      type: string
+      enum: [wifi, zigbee, zwave, ble, matter, ethernet, unknown]
+
+    ChipType:
+      type: string
+      enum: [esp8266, esp32, esp32s2, esp32s3, esp32c3, bk7231, bk7231n, rtl8710, unknown]
+
+    FirmwareType:
+      type: string
+      enum: [tasmota, esphome, openbk, openshock, original, custom, unknown]
+
+    SecuritySeverity:
+      type: string
+      enum: [info, low, medium, high, critical]
+
+    FirmwareUpdateStatus:
+      type: string
+      enum: [pending, in_progress, success, failed, rolled_back]
+
+    # --- Auth ---
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, example: admin }
+        password: { type: string, format: password }
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:  { type: string }
+        token_type:    { type: string, example: bearer }
+        expires_in:    { type: integer, description: Seconds until expiry, example: 900 }
+
+    UserMe:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        username:     { type: string }
+        email:        { type: string, format: email }
+        is_superuser: { type: boolean }
+        last_login:   { type: string, format: date-time, nullable: true }
+
+    # --- Rooms ---
+    Room:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        name:       { type: string, example: Living Room }
+        icon:       { type: string, example: sofa, nullable: true }
+        floor:      { type: integer, example: 0 }
+        vlan_id:    { type: integer, nullable: true }
+        color:      { type: string, example: '#3B82F6', nullable: true }
+        device_count: { type: integer, example: 4 }
+        online_count: { type: integer, example: 3 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    RoomCreate:
+      type: object
+      required: [name]
+      properties:
+        name:    { type: string, maxLength: 100, example: Kitchen }
+        icon:    { type: string, maxLength: 50, nullable: true }
+        floor:   { type: integer, default: 0 }
+        vlan_id: { type: integer, nullable: true }
+        color:   { type: string, pattern: '^#[0-9A-Fa-f]{6}$', nullable: true }
+
+    RoomUpdate:
+      type: object
+      properties:
+        name:    { type: string, maxLength: 100 }
+        icon:    { type: string, maxLength: 50, nullable: true }
+        floor:   { type: integer }
+        vlan_id: { type: integer, nullable: true }
+        color:   { type: string, pattern: '^#[0-9A-Fa-f]{6}$', nullable: true }
+
+    # --- Devices ---
+    Device:
+      type: object
+      properties:
+        id:                        { type: string, format: uuid }
+        name:                      { type: string }
+        room_id:                   { type: string, format: uuid, nullable: true }
+        room_name:                 { type: string, nullable: true }
+        protocol:                  { $ref: '#/components/schemas/ProtocolType' }
+        chip_type:                 { $ref: '#/components/schemas/ChipType' }
+        ip_address:                { type: string, format: ipv4, nullable: true }
+        mac_address:               { type: string, example: 'AA:BB:CC:DD:EE:FF', nullable: true }
+        firmware_type:             { $ref: '#/components/schemas/FirmwareType' }
+        firmware_version:          { type: string, nullable: true }
+        firmware_latest:           { type: string, nullable: true }
+        firmware_update_available: { type: boolean }
+        mqtt_topic:                { type: string, nullable: true }
+        mqtt_lwt_topic:            { type: string, nullable: true }
+        is_online:                 { type: boolean }
+        is_cloud_dependent:        { type: boolean }
+        is_blocked:                { type: boolean }
+        blocked_reason:            { type: string, nullable: true }
+        cloud_attempts:            { type: integer }
+        last_seen:                 { type: string, format: date-time, nullable: true }
+        metadata:                  { type: object, additionalProperties: true }
+        unresolved_security_events: { type: integer }
+        created_at:                { type: string, format: date-time }
+        updated_at:                { type: string, format: date-time }
+
+    DeviceCreate:
+      type: object
+      required: [name]
+      properties:
+        name:              { type: string, maxLength: 150 }
+        room_id:           { type: string, format: uuid, nullable: true }
+        protocol:          { $ref: '#/components/schemas/ProtocolType' }
+        chip_type:         { $ref: '#/components/schemas/ChipType' }
+        ip_address:        { type: string, format: ipv4, nullable: true }
+        mac_address:       { type: string, nullable: true }
+        firmware_type:     { $ref: '#/components/schemas/FirmwareType' }
+        firmware_version:  { type: string, nullable: true }
+        mqtt_topic:        { type: string, nullable: true }
+        mqtt_lwt_topic:    { type: string, nullable: true }
+        is_cloud_dependent: { type: boolean, default: false }
+        metadata:          { type: object, additionalProperties: true, default: {} }
+
+    DeviceUpdate:
+      type: object
+      properties:
+        name:              { type: string, maxLength: 150 }
+        room_id:           { type: string, format: uuid, nullable: true }
+        protocol:          { $ref: '#/components/schemas/ProtocolType' }
+        chip_type:         { $ref: '#/components/schemas/ChipType' }
+        ip_address:        { type: string, format: ipv4, nullable: true }
+        mac_address:       { type: string, nullable: true }
+        firmware_type:     { $ref: '#/components/schemas/FirmwareType' }
+        firmware_version:  { type: string, nullable: true }
+        firmware_latest:   { type: string, nullable: true }
+        mqtt_topic:        { type: string, nullable: true }
+        mqtt_lwt_topic:    { type: string, nullable: true }
+        is_cloud_dependent: { type: boolean }
+        is_blocked:        { type: boolean }
+        blocked_reason:    { type: string, nullable: true }
+        metadata:          { type: object, additionalProperties: true }
+
+    DeviceState:
+      type: object
+      properties:
+        device_id:   { type: string, format: uuid }
+        state:       { type: object, additionalProperties: true }
+        mqtt_topic:  { type: string, nullable: true }
+        recorded_at: { type: string, format: date-time }
+
+    DeviceCommand:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          enum: [power_on, power_off, power_toggle, restart, query_state, custom_mqtt]
+          description: >
+            power_on/off/toggle — sends MQTT command to cmnd/{topic}/POWER.
+            restart — sends cmnd/{topic}/Restart 1.
+            query_state — sends cmnd/{topic}/Status 0.
+            custom_mqtt — sends payload to custom_topic.
+        custom_topic:   { type: string, description: Required when command=custom_mqtt }
+        custom_payload: { type: string, description: Required when command=custom_mqtt }
+
+    # --- Security ---
+    SecurityEvent:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        device_id:        { type: string, format: uuid, nullable: true }
+        device_name:      { type: string, nullable: true }
+        event_type:       { type: string }
+        description:      { type: string }
+        severity:         { $ref: '#/components/schemas/SecuritySeverity' }
+        source_ip:        { type: string, nullable: true }
+        destination_ip:   { type: string, nullable: true }
+        destination_host: { type: string, nullable: true }
+        blocked:          { type: boolean }
+        resolved:         { type: boolean }
+        resolved_at:      { type: string, format: date-time, nullable: true }
+        resolution_note:  { type: string, nullable: true }
+        raw_data:         { type: object, additionalProperties: true }
+        created_at:       { type: string, format: date-time }
+
+    SecurityStats:
+      type: object
+      properties:
+        total_events:     { type: integer }
+        open_events:      { type: integer }
+        critical_count:   { type: integer }
+        high_count:       { type: integer }
+        medium_count:     { type: integer }
+        low_count:        { type: integer }
+        info_count:       { type: integer }
+        blocked_count:    { type: integer }
+        affected_devices: { type: integer }
+        last_24h:         { type: integer }
+
+    ResolveEventRequest:
+      type: object
+      required: [resolution_note]
+      properties:
+        resolution_note: { type: string, minLength: 1 }
+
+    # --- Automations ---
+    Automation:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        name:         { type: string }
+        description:  { type: string, nullable: true }
+        enabled:      { type: boolean }
+        trigger:      { type: object, additionalProperties: true }
+        conditions:   { type: array, items: { type: object } }
+        actions:      { type: array, items: { type: object } }
+        run_count:    { type: integer }
+        last_triggered: { type: string, format: date-time, nullable: true }
+        last_error:   { type: string, nullable: true }
+        created_at:   { type: string, format: date-time }
+        updated_at:   { type: string, format: date-time }
+
+    AutomationCreate:
+      type: object
+      required: [name, trigger, actions]
+      properties:
+        name:        { type: string, maxLength: 150 }
+        description: { type: string, nullable: true }
+        enabled:     { type: boolean, default: true }
+        trigger:
+          type: object
+          required: [type]
+          additionalProperties: true
+          example:
+            type: mqtt_message
+            topic: "stat/sonoff-01/POWER"
+            value: "ON"
+        conditions:
+          type: array
+          items: { type: object }
+          default: []
+        actions:
+          type: array
+          items: { type: object }
+          minItems: 1
+          example:
+            - type: mqtt_publish
+              topic: "cmnd/sonoff-02/POWER"
+              payload: "ON"
+
+    AutomationUpdate:
+      type: object
+      properties:
+        name:        { type: string, maxLength: 150 }
+        description: { type: string, nullable: true }
+        enabled:     { type: boolean }
+        trigger:     { type: object, additionalProperties: true }
+        conditions:  { type: array, items: { type: object } }
+        actions:     { type: array, items: { type: object } }
+
+    AutomationTestResult:
+      type: object
+      properties:
+        success:    { type: boolean }
+        actions_run: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              action: { type: object }
+              success: { type: boolean }
+              error:  { type: string, nullable: true }
+              duration_ms: { type: number }
+
+    # --- MQTT ---
+    MqttMessage:
+      type: object
+      properties:
+        id:           { type: integer }
+        topic:        { type: string }
+        payload:      { type: string, nullable: true }
+        payload_json: { type: object, nullable: true }
+        qos:          { type: integer, enum: [0, 1, 2] }
+        retained:     { type: boolean }
+        device_id:    { type: string, format: uuid, nullable: true }
+        device_name:  { type: string, nullable: true }
+        received_at:  { type: string, format: date-time }
+
+    MqttPublishRequest:
+      type: object
+      required: [topic, payload]
+      properties:
+        topic:    { type: string, maxLength: 512 }
+        payload:  { type: string }
+        qos:      { type: integer, enum: [0, 1, 2], default: 0 }
+        retain:   { type: boolean, default: false }
+
+    # --- Firmware ---
+    FirmwareUpdateCandidate:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        name:             { type: string }
+        room_name:        { type: string, nullable: true }
+        firmware_type:    { $ref: '#/components/schemas/FirmwareType' }
+        current_version:  { type: string, nullable: true }
+        latest_version:   { type: string, nullable: true }
+        ip_address:       { type: string, nullable: true }
+        last_seen:        { type: string, format: date-time, nullable: true }
+        is_online:        { type: boolean }
+
+    FirmwareUpdateLog:
+      type: object
+      required: [to_firmware, to_version]
+      properties:
+        from_firmware: { $ref: '#/components/schemas/FirmwareType' }
+        to_firmware:   { $ref: '#/components/schemas/FirmwareType' }
+        from_version:  { type: string, nullable: true }
+        to_version:    { type: string }
+        status:        { $ref: '#/components/schemas/FirmwareUpdateStatus' }
+        notes:         { type: string, nullable: true }
+        metadata:      { type: object, additionalProperties: true, default: {} }
+
+    FirmwareUpdateRecord:
+      allOf:
+        - $ref: '#/components/schemas/FirmwareUpdateLog'
+        - type: object
+          properties:
+            id:          { type: string, format: uuid }
+            device_id:   { type: string, format: uuid }
+            device_name: { type: string }
+            created_at:  { type: string, format: date-time }
+            updated_at:  { type: string, format: date-time }
+
+    # --- Dashboard ---
+    DashboardSummary:
+      type: object
+      properties:
+        totals:
+          type: object
+          properties:
+            devices:        { type: integer }
+            online:         { type: integer }
+            offline:        { type: integer }
+            cloud_dependent: { type: integer }
+            blocked:        { type: integer }
+            update_available: { type: integer }
+        security:
+          $ref: '#/components/schemas/SecurityStats'
+        rooms:
+          type: array
+          items:
+            type: object
+            properties:
+              id:           { type: string, format: uuid }
+              name:         { type: string }
+              icon:         { type: string, nullable: true }
+              color:        { type: string, nullable: true }
+              total:        { type: integer }
+              online:       { type: integer }
+        recent_security_events:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/SecurityEvent'
+        recent_automations_fired:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              id:             { type: string, format: uuid }
+              name:           { type: string }
+              last_triggered: { type: string, format: date-time }
+
+    NetworkMapNode:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        name:       { type: string }
+        type:       { type: string, enum: [device, room, gateway] }
+        room_id:    { type: string, format: uuid, nullable: true }
+        protocol:   { $ref: '#/components/schemas/ProtocolType' }
+        ip_address: { type: string, nullable: true }
+        vlan_id:    { type: integer, nullable: true }
+        is_online:  { type: boolean }
+        is_blocked: { type: boolean }
+        metadata:   { type: object }
+
+    NetworkMap:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetworkMapNode'
+        vlans:
+          type: array
+          items:
+            type: object
+            properties:
+              vlan_id:      { type: integer }
+              name:         { type: string }
+              device_count: { type: integer }
+        generated_at: { type: string, format: date-time }
+
+    # --- WebSocket Event Envelope ---
+    WebSocketEvent:
+      type: object
+      required: [type, timestamp]
+      discriminator:
+        propertyName: type
+      properties:
+        type:
+          type: string
+          enum:
+            - device_state
+            - device_online
+            - device_offline
+            - mqtt_message
+            - security_alert
+            - automation_fired
+            - ping
+        timestamp: { type: string, format: date-time }
+        payload:   { type: object, additionalProperties: true }
+
+# ---------------------------------------------------------------------------
+# Global Security (all endpoints unless overridden)
+# ---------------------------------------------------------------------------
+security:
+  - BearerAuth: []
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+tags:
+  - name: Auth
+    description: Authentication and session management
+  - name: Devices
+    description: IoT device inventory and control
+  - name: Rooms
+    description: Physical room/zone management
+  - name: Security
+    description: Security event monitoring and anomaly detection
+  - name: Automations
+    description: Trigger-condition-action automation rules
+  - name: MQTT
+    description: MQTT message explorer and publisher
+  - name: Firmware
+    description: Firmware version tracking and update logging
+  - name: Dashboard
+    description: Summary and network map for the main dashboard
+  - name: WebSocket
+    description: Real-time bidirectional event stream
+
+# ===========================================================================
+# PATHS
+# ===========================================================================
+paths:
+
+  # =========================================================================
+  # AUTH
+  # =========================================================================
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Obtain access + refresh tokens
+      security: []                   # No auth required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: refresh_token=eyJ...; HttpOnly; SameSite=Strict; Path=/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token using HttpOnly cookie
+      security: []
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh token missing or expired
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMe'
+        '401':
+          description: Not authenticated
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate refresh token and clear cookie
+      responses:
+        '204':
+          description: Logged out successfully
+
+  # =========================================================================
+  # DEVICES
+  # =========================================================================
+  /devices:
+    get:
+      tags: [Devices]
+      summary: List all devices (with room join, no N+1)
+      parameters:
+        - in: query
+          name: room_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: protocol
+          schema: { $ref: '#/components/schemas/ProtocolType' }
+        - in: query
+          name: firmware_type
+          schema: { $ref: '#/components/schemas/FirmwareType' }
+        - in: query
+          name: is_online
+          schema: { type: boolean }
+        - in: query
+          name: is_cloud_dependent
+          schema: { type: boolean }
+        - in: query
+          name: search
+          schema: { type: string, description: 'Trigram search on device name' }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: Paginated device list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Device' }
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+
+    post:
+      tags: [Devices]
+      summary: Register a new device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreate'
+      responses:
+        '201':
+          description: Device created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '409':
+          description: MAC address or IP already registered
+
+  /devices/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+
+    get:
+      tags: [Devices]
+      summary: Get single device by ID
+      responses:
+        '200':
+          description: Device detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          description: Not found
+
+    patch:
+      tags: [Devices]
+      summary: Update device fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+      responses:
+        '200':
+          description: Updated device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          description: Not found
+
+    delete:
+      tags: [Devices]
+      summary: Delete device and all related records
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+
+  /devices/{id}/state:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Devices]
+      summary: Get most recent state snapshot for a device
+      responses:
+        '200':
+          description: Latest device state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceState'
+        '404':
+          description: Device not found or no state recorded
+
+  /devices/{id}/history:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Devices]
+      summary: State history for a device (always requires time range for partition pruning)
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date-time }
+          description: Start of time range (ISO 8601). Required — enables partition pruning.
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+          description: End of time range. Defaults to now.
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, maximum: 1000 }
+      responses:
+        '200':
+          description: State history list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device_id:  { type: string, format: uuid }
+                  from:       { type: string, format: date-time }
+                  to:         { type: string, format: date-time }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeviceState' }
+
+  /devices/{id}/command:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Devices]
+      summary: Send a command to the device via MQTT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCommand'
+      responses:
+        '200':
+          description: Command dispatched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued:     { type: boolean }
+                  mqtt_topic: { type: string }
+                  payload:    { type: string }
+        '400':
+          description: Device has no MQTT topic configured
+        '404':
+          description: Device not found
+
+  # =========================================================================
+  # ROOMS
+  # =========================================================================
+  /rooms:
+    get:
+      tags: [Rooms]
+      summary: List all rooms with device counts
+      responses:
+        '200':
+          description: Room list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Room'
+
+    post:
+      tags: [Rooms]
+      summary: Create a new room
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreate'
+      responses:
+        '201':
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '409':
+          description: Room name already exists
+
+  /rooms/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+
+    get:
+      tags: [Rooms]
+      summary: Get room detail with devices
+      responses:
+        '200':
+          description: Room with device list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Room'
+                  - type: object
+                    properties:
+                      devices:
+                        type: array
+                        items: { $ref: '#/components/schemas/Device' }
+
+    patch:
+      tags: [Rooms]
+      summary: Update room
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomUpdate'
+      responses:
+        '200':
+          description: Updated room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+
+    delete:
+      tags: [Rooms]
+      summary: Delete room (devices become roomless, not deleted)
+      responses:
+        '204':
+          description: Deleted
+
+  # =========================================================================
+  # SECURITY
+  # =========================================================================
+  /security/events:
+    get:
+      tags: [Security]
+      summary: List security events
+      parameters:
+        - in: query
+          name: severity
+          schema: { $ref: '#/components/schemas/SecuritySeverity' }
+        - in: query
+          name: resolved
+          schema: { type: boolean, default: false }
+        - in: query
+          name: device_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: event_type
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: Paginated security events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SecurityEvent' }
+                  meta:
+                    $ref: '#/components/schemas/PaginatedMeta'
+
+  /security/events/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Security]
+      summary: Get security event detail
+      responses:
+        '200':
+          description: Security event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityEvent'
+
+  /security/events/{id}/resolve:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Security]
+      summary: Mark a security event as resolved
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveEventRequest'
+      responses:
+        '200':
+          description: Event resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityEvent'
+        '400':
+          description: Event already resolved
+        '404':
+          description: Not found
+
+  /security/stats:
+    get:
+      tags: [Security]
+      summary: Aggregate security statistics
+      responses:
+        '200':
+          description: Security stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityStats'
+
+  # =========================================================================
+  # AUTOMATIONS
+  # =========================================================================
+  /automations:
+    get:
+      tags: [Automations]
+      summary: List all automation rules
+      parameters:
+        - in: query
+          name: enabled
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Automation list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Automation' }
+
+    post:
+      tags: [Automations]
+      summary: Create a new automation rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationCreate'
+      responses:
+        '201':
+          description: Automation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+
+  /automations/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+
+    get:
+      tags: [Automations]
+      summary: Get automation detail
+      responses:
+        '200':
+          description: Automation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+
+    patch:
+      tags: [Automations]
+      summary: Update automation rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationUpdate'
+      responses:
+        '200':
+          description: Updated automation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+
+    delete:
+      tags: [Automations]
+      summary: Delete automation rule
+      responses:
+        '204':
+          description: Deleted
+
+  /automations/{id}/toggle:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Automations]
+      summary: Toggle automation enabled/disabled
+      responses:
+        '200':
+          description: Updated automation with new enabled state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+
+  /automations/{id}/test:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Automations]
+      summary: Dry-run an automation (skips conditions, executes actions with dry_run=true flag)
+      responses:
+        '200':
+          description: Test execution result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTestResult'
+
+  # =========================================================================
+  # MQTT
+  # =========================================================================
+  /mqtt/messages:
+    get:
+      tags: [MQTT]
+      summary: Browse recent MQTT messages (last 10k retained)
+      parameters:
+        - in: query
+          name: topic
+          schema: { type: string }
+          description: 'Topic filter (exact match or prefix with wildcard # e.g. "stat/#")'
+        - in: query
+          name: device_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: retained
+          schema: { type: boolean }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, maximum: 500 }
+        - in: query
+          name: before_id
+          schema: { type: integer }
+          description: Cursor for pagination (return records with id < before_id)
+      responses:
+        '200':
+          description: MQTT message list (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/MqttMessage' }
+                  has_more: { type: boolean }
+
+  /mqtt/publish:
+    post:
+      tags: [MQTT]
+      summary: Publish a message to the MQTT broker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MqttPublishRequest'
+      responses:
+        '200':
+          description: Message published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published: { type: boolean }
+                  topic:     { type: string }
+                  payload:   { type: string }
+        '503':
+          description: MQTT broker not connected
+
+  # =========================================================================
+  # FIRMWARE
+  # =========================================================================
+  /firmware/devices-needing-update:
+    get:
+      tags: [Firmware]
+      summary: List devices where a newer firmware version is available
+      parameters:
+        - in: query
+          name: firmware_type
+          schema: { $ref: '#/components/schemas/FirmwareType' }
+        - in: query
+          name: room_id
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Devices needing firmware update
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FirmwareUpdateCandidate'
+
+  /firmware/{device_id}/log-update:
+    parameters:
+      - in: path
+        name: device_id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Firmware]
+      summary: Log a firmware update operation (manual or OTA)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpdateLog'
+      responses:
+        '201':
+          description: Update record created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpdateRecord'
+
+  /firmware/{device_id}/history:
+    parameters:
+      - in: path
+        name: device_id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Firmware]
+      summary: Get firmware update history for a device
+      responses:
+        '200':
+          description: Firmware update history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FirmwareUpdateRecord'
+
+  # =========================================================================
+  # DASHBOARD
+  # =========================================================================
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Single-query dashboard summary (totals, security stats, room breakdown)
+      responses:
+        '200':
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+
+  /dashboard/network-map:
+    get:
+      tags: [Dashboard]
+      summary: Network topology map data (nodes grouped by VLAN/room)
+      responses:
+        '200':
+          description: Network map
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkMap'
+
+  # =========================================================================
+  # WEBSOCKET
+  # =========================================================================
+  /ws:
+    get:
+      tags: [WebSocket]
+      summary: Real-time WebSocket event stream
+      description: |
+        Upgrade to WebSocket. Authenticate via `?token=<access_jwt>` query parameter.
+
+        **Subscribed event types emitted by server:**
+
+        | type | trigger | payload fields |
+        |---|---|---|
+        | `device_state` | MQTT state message received | device_id, device_name, state, mqtt_topic |
+        | `device_online` | Device LWT = online | device_id, device_name, ip_address |
+        | `device_offline` | Device LWT = offline | device_id, device_name, last_seen |
+        | `mqtt_message` | Any MQTT message | id, topic, payload, qos, retained, device_id |
+        | `security_alert` | New security event created | event_id, device_id, severity, event_type, description |
+        | `automation_fired` | Automation rule triggered | automation_id, automation_name, trigger, actions_run |
+        | `ping` | Server keepalive (every 30s) | server_time |
+
+        **Client → Server messages:**
+
+        | type | description |
+        |---|---|
+        | `subscribe_device` | Filter events to specific device_id |
+        | `subscribe_room` | Filter events to devices in room_id |
+        | `unsubscribe_all` | Reset to receive all events |
+        | `pong` | Respond to server ping |
+
+        **Connection lifecycle:**
+        - Server sends `ping` every 30 seconds; client must respond with `pong` within 10s or connection is closed.
+        - Clients auto-reconnect with exponential backoff (base 1s, max 30s).
+        - On reconnect, client should call GET /devices and GET /security/stats to resync state.
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+          description: Valid access JWT
+      responses:
+        '101':
+          description: WebSocket upgrade successful
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Token expired
