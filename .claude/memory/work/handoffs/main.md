@@ -1,166 +1,87 @@
-# Handoff: Dom'Atic v0.1.0
+# Handoff: main
 
-**Último autor:** SoftwareFactory (Luís / Vera)
+**Último autor:** Luís (via Claude Code / Vera)
 **Data:** 2026-05-08
 **Branch:** main
 
----
-
 ## O que foi feito
 
-Implementação completa do Dom'Atic do zero via SoftwareFactory em 7 fases autónomas. Hub web local para gestão centralizada de dispositivos IoT heterogéneos — substitui firmware Tuya/duvidoso por Tasmota/ESPHome, corre 100% offline, isola dispositivos em VLAN segura.
+Sessão de arranque e debugging do domAtic do zero até ao estado funcional. O projecto já existia mas nunca tinha sido arrancado — resolvemos conflitos de portas, bugs de autenticação, CORS, dashboard com crash, e integrámos o módulo BIM completo portado do projecto constructos. Next.js atualizado de 14 para 15.
 
-**Stack:** FastAPI + SQLAlchemy 2.0 + aiomqtt + Next.js 14 + PostgreSQL 15 + Redis + Mosquitto MQTT  
-**Resultado:** 132 ficheiros, 14.052 linhas, 80 testes (71% coverage), OWASP auditado, 5 containers Docker running.
+### Fixes resolvidos
+1. **Porto 3000 ocupado pelo Wazuh** → frontend remapeado para `:3002`
+2. **bcrypt 5.0 incompatível com passlib 1.7.4** → fixado `bcrypt==3.2.2` em requirements.txt
+3. **CORS bloqueava `:3002`** → adicionado ao `CORS_ORIGINS` no `.env`
+4. **NEXT_PUBLIC_API_URL embebido em build-time** → Dockerfile corrigido com ARG + ENV antes do npm build
+5. **Frontend apontava para porta interna do container `:8000`** → corrigido para `:8001/api/v1`
+6. **Login retornava sem user object** → `auth.ts` chama `/auth/me` após login
+7. **Backend aceitava só `username`, frontend enviava `email`** → LoginRequest aceita ambos, authenticate_user faz OR query
+8. **Dashboard crash** (TypeError: Cannot read properties of undefined) → DashboardSummary reconstruído com rooms/events/mqtt
+9. **Conta admin criada** → admin@domatic.dev / domatic2026
 
----
-
-## Arquitetura
-
-```
-Browser (Next.js :3002)
-  ↕ HTTP REST + WebSocket
-FastAPI (:8001)
-  ↕ aiomqtt bridge
-Mosquitto (:1883)
-  ↕ MQTT subscribe all
-Dispositivos IoT (Tasmota/ESPHome/Zigbee2MQTT)
-
-FastAPI → Redis pub/sub → WebSocket Manager → Browser (real-time)
-```
-
-**Portas locais (dev):**
-- Frontend: http://localhost:3002
-- Backend API: http://localhost:8001
-- Swagger: http://localhost:8001/api/v1/docs
-- MQTT: localhost:1883
-- PostgreSQL: localhost:5432 (interno Docker)
-- Redis: localhost:6380 (Dom'Atic), localhost:6379 (outro serviço no host)
-
----
+### Integração BIM (portado do constructos)
+- Backend: BimModel, migration 0002, bim_service.py, route /api/v1/bim
+- Frontend: useBim.ts, IFCViewer.tsx, BimModelUpload.tsx, BimModelList.tsx, página /bim
+- Sidebar: link "Modelos BIM" adicionado
+- Next.js 14.2.3 → 15.5.18 (necessário para @thatopen/components)
+- Deps BIM: @thatopen/components, web-ifc, three, @thatopen/fragments, camera-controls
 
 ## Onde parou
 
-Projeto em estado **v0.1.0 funcional**. Todos os 5 containers a correr. Ainda não foi criada a conta admin (primeiro acesso em `/setup`). Mosquitto não tem password configurada ainda (placeholder no `passwd` file).
-
-**Ficheiro de estado crítico:** `.env` — já gerado com `SECRET_KEY` real, não commitar.
-
----
+Tudo a correr. Containers up, login funcional, dashboard carrega, página /bim acessível em localhost:3002/bim.
+**Não testado:** upload de .ifc real e visualização 3D no browser.
 
 ## Próximos passos
 
-### Imediatos (antes de usar em produção)
-1. **Configurar Mosquitto password:**
-   ```bash
-   docker compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd domatic
-   # Introduzir password; actualizar MQTT_PASSWORD em .env
-   docker compose restart mosquitto backend
-   ```
+1. Copiar web-ifc WASM para public/:
+   cp node_modules/web-ifc/*.wasm frontend/public/web-ifc/
+   (necessário para o viewer 3D funcionar — sem eles cai para modo download)
 
-2. **Criar conta admin (primeiro acesso):**
-   - Aceder a http://localhost:3002/setup
-   - Criar utilizador admin
+2. Testar viewer BIM — carregar um ficheiro .ifc em localhost:3002/bim
 
-3. **Adicionar primeiro dispositivo real:**
-   - Registar em `/devices` com o MQTT topic correcto (ex: `tele/sonoff-01/#`)
-   - Verificar que mensagens aparecem na MQTT Console
+3. Correr seeds: make seed
 
-### Sprint 2 — Melhorias planeadas
-- [ ] **Logout token blacklist** (Redis SET com TTL) — actualmente tokens são válidos até expirar após logout
-- [ ] **Failed-login → security_events** — brute force não é persistido na DB
-- [ ] **PostgreSQL/Redis ports** → bind a `127.0.0.1` em produção (actualmente `0.0.0.0`)
-- [ ] **Auto-discovery Tasmota** — via `tele/+/INFO1` LWT topics (detectar novos dispositivos automaticamente)
-- [ ] **Auto-discovery ESPHome** — via `esphome/+/status`
-- [ ] **Frigate integration** — câmeras com deteção IA local
-- [ ] **Upgrade `python-jose`** → `PyJWT` (CVE-2024-33664, mitigado mas não resolvido)
-- [ ] **Testes E2E** — Playwright para o frontend
-- [ ] **Mobile app** — React Native ou PWA
+4. Investigar MQTT bridge — logs mostram "connection refused code:5"; ver mosquitto/config/
 
-### Sprint 3 — Deploy VPS
-- [ ] Configurar subdomínio `domatic.etergrowth.com`
-- [ ] Certbot SSL
-- [ ] Tailscale para acesso externo seguro
-- [ ] Backup automático PostgreSQL → NAS
-
----
+5. Fazer commit de tudo (17 ficheiros modificados + 11 novos, nada commitado)
 
 ## Bloqueios
 
-Nenhum bloqueio crítico.
+- **MQTT desconectado** — mosquitto corre mas bridge falha. Verificar auth em mosquitto/config/passwd
+- **web-ifc WASM em falta** — IFCViewer precisa de /web-ifc/*.wasm em public/; sem eles viewer não funciona
 
-- Mosquitto MQTT bridge reporta `mqtt_connected: false` no health endpoint porque o `passwd` file ainda é placeholder (sem password real). Backend arranca na mesma — MQTT é opcional até ser configurado.
-- `next/14.2.3` tem vulnerability conhecida — upgrade para latest Next.js 15 recomendado antes de produção pública.
+## Credenciais dev
 
----
+- URL: http://localhost:3002
+- Email: admin@domatic.dev  
+- Password: domatic2026
+- Backend API: http://localhost:8001/api/v1
+- Docs: http://localhost:8001/api/docs
 
-## Ficheiros principais
+## Ficheiros principais tocados
 
-```
-domAtic/
-├── .env                              ← NUNCA commitar — contém SECRET_KEY real
-├── .env.example                      ← Template para novos deployments
-├── docker-compose.yml                ← 5 serviços (backend:8001, frontend:3002)
-├── Makefile                          ← Comandos: make up/down/logs/health/seed
-├── backend/
-│   ├── app/main.py                   ← Entry point FastAPI + lifespan MQTT/WS
-│   ├── app/mqtt_bridge.py            ← Bridge aiomqtt → Redis pub/sub
-│   ├── app/websocket_manager.py      ← WebSocket fanout + Redis subscriber
-│   ├── app/services/
-│   │   ├── automation_service.py     ← Motor automações (wildcard MQTT)
-│   │   └── security_service.py       ← Monitor segurança + Pi-hole polling
-│   ├── app/api/routes/               ← 9 ficheiros de rotas (36 endpoints)
-│   ├── app/db/models.py              ← 8 modelos ORM SQLAlchemy
-│   └── tests/                        ← 80 testes, 71% coverage
-├── frontend/
-│   ├── src/app/(dashboard)/          ← 9 páginas autenticadas
-│   ├── src/hooks/useWebSocket.ts     ← Singleton WS + reconnect exponencial
-│   ├── src/lib/store.ts              ← Zustand store (WS state, alerts)
-│   └── src/lib/api.ts                ← Axios client com refresh interceptor
-├── mosquitto/config/
-│   ├── mosquitto.conf                ← Config MQTT broker
-│   └── passwd                        ← PLACEHOLDER — precisa de password real
-└── db/
-    ├── migrations/                   ← 2 ficheiros SQL (schema + views)
-    └── seeds/                        ← 10 rooms + 5 demo devices
-```
+backend/app/api/routes/auth.py          login aceita email ou username
+backend/app/api/routes/dashboard.py     summary completo reconstruído
+backend/app/api/routes/bim.py           NOVO — endpoints BIM
+backend/app/config.py                   UPLOAD_DIR, BIM_MAX_BYTES
+backend/app/db/models.py                BimModel adicionado
+backend/app/schemas/auth.py             LoginRequest aceita email opcional
+backend/app/schemas/dashboard.py        DashboardSummary reconstruído
+backend/app/schemas/bim.py              NOVO
+backend/app/services/auth_service.py    authenticate_user aceita email ou username
+backend/app/services/bim_service.py     NOVO
+backend/alembic/versions/0002_bim_models.py  NOVO migration
+backend/requirements.txt                bcrypt==3.2.2
 
----
+frontend/Dockerfile                     ARG build-time + --legacy-peer-deps
+frontend/next.config.mjs                asyncWebAssembly + layers
+frontend/package.json                   Next.js 15, React 19, deps BIM
+frontend/.eslintrc.json                 no-explicit-any off
+frontend/src/lib/auth.ts                login chama /auth/me após token
+frontend/src/components/layout/Sidebar.tsx  link BIM
+frontend/src/components/bim/            NOVO: IFCViewer, BimModelUpload, BimModelList
+frontend/src/app/(dashboard)/bim/       NOVO: página BIM
+frontend/src/hooks/useBim.ts            NOVO
 
-## Comandos úteis
-
-```bash
-# Arrancar tudo
-cd ~/projects/domAtic
-docker compose up -d
-
-# Ver logs do backend
-docker compose logs -f backend
-
-# Correr testes
-cd backend && python -m pytest tests/ -v
-
-# Aceder à DB
-docker compose exec postgres psql -U domatic -d domatic
-
-# Publicar mensagem MQTT de teste
-docker compose exec mosquitto mosquitto_pub -h localhost -t "tele/test-device/POWER" -m "ON" -u domatic -P <password>
-
-# Verificar saúde
-curl http://localhost:8001/health
-```
-
----
-
-## Como continuar
-
-```bash
-git clone git@github.com:Eter-2/domatic.git
-cd domatic
-cp .env.example .env
-# Editar .env com passwords reais
-make setup-passwords
-make up
-# Aceder a http://localhost:3002/setup
-```
-
-Qualquer membro pode continuar com: `git pull && /continuar ~/projects/domAtic`
+docker-compose.yml                      portas corretas, volume bim_uploads, UPLOAD_DIR
+.env                                    CORS_ORIGINS inclui :3002
