@@ -116,6 +116,7 @@ def create_app() -> FastAPI:
     from app.api.routes import (
         auth,
         automations,
+        bim,
         dashboard,
         devices,
         firmware,
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(mqtt.router, prefix=PREFIX)
     app.include_router(firmware.router, prefix=PREFIX)
     app.include_router(dashboard.router, prefix=PREFIX)
+    app.include_router(bim.router, prefix=PREFIX)
     # WebSocket is registered at /api/v1/ws (not under a sub-prefix)
     app.include_router(ws.router, prefix=PREFIX)
 

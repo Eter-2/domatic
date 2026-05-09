@@ -251,3 +251,26 @@ class FirmwareUpdate(Base):
     )
 
     device: Mapped["Device"] = relationship("Device", back_populates="firmware_updates")
+
+
+# ── BIM / IFC Models ──────────────────────────────────────────────────────────
+
+BIM_ESTADO_ENUM = SAEnum("uploading", "processing", "ready", "error", name="bim_model_estado")
+
+
+class BimModel(Base):
+    __tablename__ = "bim_models"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    nome: Mapped[str] = mapped_column(String(255), nullable=False)
+    versao: Mapped[str] = mapped_column(String(50), nullable=False, default="v1")
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    tamanho_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    estado: Mapped[str] = mapped_column(BIM_ESTADO_ENUM, nullable=False, default="ready")
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

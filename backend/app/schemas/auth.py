@@ -3,11 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., min_length=1, max_length=64)
+    username: Optional[str] = Field(None, min_length=1, max_length=64)
+    email: Optional[str] = Field(None)
     password: str = Field(..., min_length=1)
 
 
@@ -36,3 +39,11 @@ class SetupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=64)
     email: EmailStr
     password: str = Field(..., min_length=8)
+
+
+class SetupResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserResponse

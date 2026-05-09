@@ -10,6 +10,7 @@ redis[asyncio]==5.0.4
 # upgrading to PyJWT (actively maintained) is recommended for a future sprint.
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==3.2.2
 httpx==0.27.0
 pydantic==2.7.1
 pydantic-settings==2.2.1

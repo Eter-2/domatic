@@ -12,6 +12,7 @@ import {
   Terminal,
   HardDrive,
   Network,
+  Building2,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { href: '/mqtt', icon: Terminal, label: 'MQTT Console' },
   { href: '/firmware', icon: HardDrive, label: 'Firmware' },
   { href: '/network-map', icon: Network, label: 'Network Map' },
+  { href: '/bim', icon: Building2, label: 'Modelos BIM' },
 ]
 
 export function Sidebar() {

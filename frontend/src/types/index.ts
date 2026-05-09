@@ -123,18 +123,26 @@ export interface MqttMessage {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export interface User {
-  id: number
+  id: string  // UUID
+  username: string
   email: string
-  name: string
-  role: 'admin' | 'user' | 'readonly'
+  is_active: boolean
   created_at: string
 }
 
-export interface AuthResponse {
+export interface TokenResponse {
   access_token: string
+  refresh_token: string
   token_type: 'bearer'
+  expires_in: number
+}
+
+export interface SetupResponse extends TokenResponse {
   user: User
 }
+
+// AuthResponse kept for backward compat — equals SetupResponse
+export type AuthResponse = SetupResponse
 
 export interface LoginCredentials {
   email: string
@@ -142,7 +150,7 @@ export interface LoginCredentials {
 }
 
 export interface SetupCredentials {
-  name: string
+  username: string
   email: string
   password: string
   confirm_password: string
@@ -172,25 +180,33 @@ export interface AutomationActivity {
 
 // ─── Network Map ──────────────────────────────────────────────────────────────
 
-export interface NetworkNode {
+export interface NetworkMapDevice {
   id: string
-  type: 'device' | 'room' | 'broker'
-  label: string
-  protocol?: Protocol
-  is_online?: boolean
-  device_id?: number
-  room_id?: number
+  name: string
+  protocol: Protocol
+  chip_type: ChipType | null
+  firmware_type: FirmwareType
+  is_online: boolean
+  is_cloud_dependent: boolean
+  ip_address: string | null
+  mac_address: string | null
+  mqtt_topic: string | null
+  last_seen: string | null
+  current_state: Record<string, unknown> | null
 }
 
-export interface NetworkLink {
-  source: string
-  target: string
-  type: 'device_room' | 'device_broker' | 'room_broker'
+export interface NetworkMapRoom {
+  room_id: string
+  room_name: string
+  floor: number | null
+  devices: NetworkMapDevice[]
 }
 
 export interface NetworkMapResponse {
-  nodes: NetworkNode[]
-  links: NetworkLink[]
+  rooms: NetworkMapRoom[]
+  unassigned_devices: NetworkMapDevice[]
+  total_devices: number
+  online_count: number
 }
 
 // ─── API response wrappers ────────────────────────────────────────────────────

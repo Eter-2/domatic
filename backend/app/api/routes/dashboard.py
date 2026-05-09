@@ -12,10 +12,14 @@ from app.db.base import get_db
 from app.db.models import Automation, Device, DeviceState, MqttMessage, Room, SecurityEvent
 from app.schemas.auth import UserResponse
 from app.schemas.dashboard import (
+    AutomationActivity,
     DashboardSummary,
+    MqttMessageSummary,
     NetworkMapDevice,
     NetworkMapResponse,
     NetworkMapRoom,
+    RoomSummary,
+    SecurityEventSummary,
 )
 from app.services.auth_service import get_current_user
 
@@ -46,32 +50,68 @@ async def get_summary(
     )
     alerts: int = alerts_result.scalar_one()
 
-    # Automation counts
-    auto_total_result = await db.execute(select(func.count(Automation.id)))
-    auto_total: int = auto_total_result.scalar_one()
-
+    # Active automations
     auto_enabled_result = await db.execute(
         select(func.count(Automation.id)).where(Automation.enabled == True)  # noqa: E712
     )
     auto_enabled: int = auto_enabled_result.scalar_one()
 
-    # Last MQTT message
-    last_msg_result = await db.execute(
-        select(MqttMessage.received_at, MqttMessage.topic)
-        .order_by(MqttMessage.received_at.desc())
-        .limit(1)
+    # Rooms with device counts
+    rooms_result = await db.execute(
+        select(Room).options(selectinload(Room.devices)).order_by(Room.name)
     )
-    last_msg = last_msg_result.first()
+    rooms_list = rooms_result.scalars().all()
+    room_summaries = [
+        RoomSummary(
+            id=room.id,
+            name=room.name,
+            icon=room.icon,
+            device_count=len(room.devices),
+            online_count=sum(1 for d in room.devices if d.is_online),
+            created_at=room.created_at,
+        )
+        for room in rooms_list
+    ]
+
+    # Recent security events
+    events_result = await db.execute(
+        select(SecurityEvent)
+        .order_by(SecurityEvent.created_at.desc())
+        .limit(5)
+    )
+    recent_events = [
+        SecurityEventSummary.model_validate(e)
+        for e in events_result.scalars().all()
+    ]
+
+    # Recent MQTT messages
+    mqtt_result = await db.execute(
+        select(MqttMessage)
+        .order_by(MqttMessage.received_at.desc())
+        .limit(8)
+    )
+    recent_mqtt = [
+        MqttMessageSummary(
+            id=m.id,
+            topic=m.topic,
+            payload=m.payload,
+            qos=m.qos,
+            retained=m.retained,
+            timestamp=m.received_at,
+        )
+        for m in mqtt_result.scalars().all()
+    ]
 
     return DashboardSummary(
         total_devices=total,
         online_devices=online,
         offline_devices=total - online,
-        security_alerts_unresolved=alerts,
-        automations_total=auto_total,
-        automations_enabled=auto_enabled,
-        last_mqtt_message_at=last_msg[0] if last_msg else None,
-        last_mqtt_topic=last_msg[1] if last_msg else None,
+        active_automations=auto_enabled,
+        unresolved_security_events=alerts,
+        rooms=room_summaries,
+        recent_security_events=recent_events,
+        recent_mqtt_messages=recent_mqtt,
+        recent_automation_activity=[],
     )
 
 

@@ -49,9 +49,11 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - MQTT_HOST=mosquitto
       - MQTT_PORT=1883
-      # A05: Set to "production" in production deployments to enforce strong SECRET_KEY.
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - UPLOAD_DIR=/app/uploads
     env_file: .env
+    volumes:
+      - bim_uploads:/app/uploads
     ports:
       - "8001:8000"
     depends_on:
@@ -64,10 +66,14 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8001/api/v1
+        - NEXT_PUBLIC_WS_URL=ws://localhost:8001/api/v1/ws
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+      - NEXT_PUBLIC_API_URL=http://localhost:8001/api/v1
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8001/api/v1/ws
     ports:
       - "3002:3000"
     depends_on:
@@ -79,3 +85,4 @@ volumes:
   redis_data:
   mosquitto_data:
   mosquitto_log:
+  bim_uploads:

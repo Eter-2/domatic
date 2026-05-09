@@ -14,6 +14,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     SetupRequest,
+    SetupResponse,
     TokenResponse,
     UserResponse,
 )
@@ -37,12 +38,13 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
     Rate-limited to 5 attempts per minute per IP to prevent brute-force attacks.
     """
-    user = await authenticate_user(db, body.username, body.password)
+    credential = body.email or body.username or ""
+    user = await authenticate_user(db, credential, body.password)
     if user is None:
         # A01/A07: Return identical error regardless of whether username or
         # password was wrong — prevents user enumeration.
         logger.warning(
-            "Failed login attempt for username '%s'.", body.username
+            "Failed login attempt for '%s'.", credential
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -103,10 +105,18 @@ async def logout(current_user: UserResponse = Depends(get_current_user)):
     return None
 
 
-@router.post("/setup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.get("/setup/status", status_code=status.HTTP_200_OK)
+async def setup_status(db: AsyncSession = Depends(get_db)):
+    """Check whether first-time setup is still required."""
+    count_result = await db.execute(select(func.count(User.id)))
+    count: int = count_result.scalar_one()
+    return {"setup_required": count == 0}
+
+
+@router.post("/setup", response_model=SetupResponse, status_code=status.HTTP_201_CREATED)
 async def setup(body: SetupRequest, db: AsyncSession = Depends(get_db)):
     """
-    First-time setup: create the initial admin user.
+    First-time setup: create the initial admin user and return auth tokens.
     Only allowed when the users table is empty.
     """
     count_result = await db.execute(select(func.count(User.id)))
@@ -137,4 +147,15 @@ async def setup(body: SetupRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.flush()
     logger.info("Initial admin user '%s' created.", user.username)
-    return UserResponse.model_validate(user)
+
+    access_token = create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    return SetupResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=UserResponse.model_validate(user),
+    )

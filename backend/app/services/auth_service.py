@@ -104,10 +104,15 @@ async def get_current_user(
 
 
 async def authenticate_user(
-    db: AsyncSession, username: str, password: str
+    db: AsyncSession, username_or_email: str, password: str
 ) -> Optional[User]:
-    """Return the User if credentials are valid, else None."""
-    result = await db.execute(select(User).where(User.username == username))
+    """Return the User if credentials are valid, else None. Accepts username or email."""
+    from sqlalchemy import or_
+    result = await db.execute(
+        select(User).where(
+            or_(User.username == username_or_email, User.email == username_or_email)
+        )
+    )
     user: Optional[User] = result.scalar_one_or_none()
     if user is None or not verify_password(password, user.hashed_password):
         return None

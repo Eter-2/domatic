@@ -107,6 +107,10 @@ class Settings(BaseSettings):
         description="Comma-separated list of allowed CORS origins.",
     )
 
+    # ── BIM uploads ───────────────────────────────────────────────────────────
+    UPLOAD_DIR: str = Field(default="/app/uploads", description="Directory for uploaded BIM/IFC files.")
+    BIM_MAX_BYTES: int = Field(default=200 * 1024 * 1024, description="Max IFC upload size in bytes (default 200MB).")
+
     # ── Logging ───────────────────────────────────────────────────────────────
     LOG_LEVEL: str = Field(default="INFO", description="Python logging level name.")
 
